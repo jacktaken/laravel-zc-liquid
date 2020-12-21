@@ -13,7 +13,6 @@ use Illuminate\View\ViewFinderInterface;
 
 /**
  * @method static void compile($path = null)
- * @method static string findTemplate($path)
  * @method static bool getAutoEscape()
  * @method static string getCompiledPath()
  * @method static string getFileSource()
@@ -42,6 +41,6 @@ class Facade extends IlluminateFacade
      */
     protected static function getFacadeAccessor()
     {
-        return static::$app['view']->getEngineResolver()->resolve('liquid')->getCompiler();
+        return 'liquid.compiler';
     }
 }

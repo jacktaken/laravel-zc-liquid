@@ -12,6 +12,9 @@
 namespace Liquid;
 
 use ArrayAccess;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Iterator;
 use IteratorAggregate;
 
@@ -60,6 +63,12 @@ class Context
      * @var array
      */
     private $methodMap = array();
+    /**
+     * mark if push new level for assigns
+     *
+     * @var bool|integer
+     */
+    private $push = false;
 
     /**
      * List with magick methods to ignore for filters
@@ -180,7 +189,6 @@ class Context
             if ($class === false) {
                 return call_user_func_array($name, $args);
             } else {
-                call_user_func_array([new $class($this), $name], $args);
                 return call_user_func_array([new $class($this), $name], $args);
             }
         }
@@ -206,6 +214,7 @@ class Context
     public function push()
     {
         array_unshift($this->assigns, array());
+        $this->push = 0;
         return true;
     }
 
@@ -221,6 +230,7 @@ class Context
         }
 
         array_shift($this->assigns);
+        $this->push = false;
     }
 
     /**
@@ -247,9 +257,22 @@ class Context
     {
         if($global) {
             $this->assigns_globals[$key] = $value;
+        } elseif($this->push !== false) {
+            $this->assigns[$this->push][$key] = $value;
         } else {
             $this->assigns[0][$key] = $value;
         }
+    }
+
+    /**
+     * Replaces []=
+     *
+     * @param string $key
+     * @param mixed $value
+     */
+    public function put($key, $value)
+    {
+        $this->assigns[count($this->assigns) - 1][$key] = $value;
     }
 
     /**
@@ -335,6 +358,20 @@ class Context
      */
     private function fetch($key)
     {
+        if($this->push !== false && array_key_exists($this->push, $this->assigns)) {
+            foreach ([$this->assigns[$this->push]] as $scope) {
+                if (array_key_exists($key, $scope)) {
+                    $obj = $scope[$key];
+
+                    if ($obj instanceof Drop) {
+                        $obj->setContext($this);
+                    }
+
+                    return $obj;
+                }
+            }
+        }
+
         // TagDecrement depends on environments being checked before assigns
         foreach ($this->environments as $environment) {
             if (array_key_exists($key, $environment)) {
@@ -399,7 +436,12 @@ class Context
             return sprintf('["%s"]', $this->variable($match[1]) ? : $match[1]);
         }, $key);
 
-        $parts = preg_split('/(\.|\[|\])/', $key, null, PREG_SPLIT_NO_EMPTY);
+        if(preg_match_all("~['\"][^'\"]++['\"]|[^.\"\'\[\]]++~", $key,$result)) {
+            $parts = $result[0];
+        } else {
+            $parts = preg_split('/(\.|\[|\])/', $key, null, PREG_SPLIT_NO_EMPTY);
+        }
+
         $parts = array_map(function($part) {
             if(preg_match('~^"(.*)"$~', $part, $m)) {
                 return $m[1];
@@ -425,84 +467,15 @@ class Context
 
             $nextPartName = array_shift($parts);
 
+            if($nextPartName == 'empty?') {
+                return empty($object);
+            }
+
             if($nextPartName == 'size' && count($parts) == 0) {
                 return $this->getSize($object);
             }
 
             $object = $this->getValue($object, $nextPartName);
-//            continue;
-//
-//            // since we still have a part to consider
-//            // and since we can't dig deeper into plain values
-//            // it can be thought as if it has a property with a null value
-//            if (!is_object($object) && !is_array($object)) {
-//                return null;
-//            }
-//
-//            if (is_null($object)) {
-//                return null;
-//            }
-//
-//            if ($object instanceof Drop) {
-//                $object->setContext($this);
-//            }
-//
-//            $nextPartName = array_shift($parts);
-//
-//            if (is_array($object)) {
-//                // if the last part of the context variable is .size we just return the count
-//                if ($nextPartName == 'size' && count($parts) == 0 && !array_key_exists('size', $object)) {
-//                    return count($object);
-//                }
-//
-//                // no key - no value
-//                if (!array_key_exists($nextPartName, $object)) {
-//                    return null;
-//                }
-//
-//                $object = $this->value($this->transformIteratorAggregate($object[$nextPartName]));
-//                continue;
-//            }
-//
-//            if (!is_object($object)) {
-//                // we got plain value, yet asked to resolve a part
-//                // think plain values have a null part with any name
-//                return null;
-//            }
-//
-//            if ($object instanceof Drop) {
-//                // if the object is a drop, make sure it supports the given method
-//                if (!$object->hasKey($nextPartName)) {
-//                    return null;
-//                }
-//
-//                $object = $this->value($this->transformIteratorAggregate($object->invokeDrop($nextPartName)));
-//                continue;
-//            }
-//
-//            // if it has `get` or `field_exists` methods
-//            if (method_exists($object, 'field_exists')) {
-//                if (!$object->field_exists($nextPartName)) {
-//                    return null;
-//                }
-//
-//                $object = $this->value($this->transformIteratorAggregate($object->get($nextPartName)));
-//                continue;
-//            }
-//
-//            // if it's just a regular object, attempt to access a public method
-//            if (is_callable(array($object, $nextPartName))) {
-//                $object = $this->value(call_user_func(array($object, $nextPartName)));
-//                continue;
-//            }
-//
-//            // then try a property (independent of accessibility)
-//            if (property_exists($object, $nextPartName)) {
-//                $object = $this->value($this->transformIteratorAggregate($object->$nextPartName));
-//                continue;
-//            }
-
-            // we'll try casting this object in the next iteration
         }
 
         // finally, resolve an object to a string or a plain value. if collection return it
@@ -511,7 +484,14 @@ class Context
         }
 
         // if everything else fails, throw up
-        if (is_object($object) && !($object instanceof \Traversable) && !($object instanceof Drop)) {
+        if (
+            is_object($object) &&
+            !($object instanceof \Traversable) &&
+            !($object instanceof Drop) &&
+            !($object instanceof Model) &&
+            !($object instanceof Builder) &&
+            !($object instanceof Relation)
+        ) {
             throw new LiquidException(sprintf("Value of type %s has no `__toString` methods", get_class($object)));
         }
 

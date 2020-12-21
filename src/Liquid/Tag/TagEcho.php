@@ -11,21 +11,27 @@
 
 namespace Liquid\Tag;
 
-use Liquid\AbstractBlock;
 use Liquid\AbstractTag;
-use Liquid\Context;
+use Liquid\Constant;
+use Liquid\Document;
 use Liquid\LiquidCompiler;
+use Liquid\Context;
 use Liquid\LiquidException;
 use Liquid\Regexp;
 
-class TagCaptureLayout extends AbstractTag
+/**
+ * Use to print in liquid tag
+ *
+ * Example:
+ *
+ *     {% echo "aas fdsfds" %}
+ */
+class TagEcho extends AbstractTag
 {
     /**
-     * The variable to assign to
-     *
-     * @var string
+     * @var string The name of the template
      */
-    protected $to;
+    private $string;
 
     /**
      * Constructor
@@ -38,25 +44,27 @@ class TagCaptureLayout extends AbstractTag
      */
     public function __construct($markup, array &$tokens, LiquidCompiler $compiler = null)
     {
-        $syntaxRegexp = new Regexp('/[\'\"](\w+)[\'\"]\s*(append)?/');
+        $regex = new Regexp('/(' . Constant::QuotedFragmentPartial . ')/');
+        if ($regex->match($markup)) {
+            $this->string = $regex->matches[1];
+        } else {
+            throw new LiquidException("Error in tag 'echo' - Valid syntax: echo '[variable]'");
+        }
 
-        $this->to = $markup;
         parent::__construct($markup, $tokens, $compiler);
     }
 
     /**
-     * Renders the block
+     * Renders the node
      *
      * @param Context $context
      *
      * @return string
+     * @throws LiquidException
+     * @throws \Throwable
      */
     public function render(Context $context)
     {
-        $output = parent::render($context);
-
-        $context->set($this->to, $output, true);
-
-        return '';
+        return $context->get($this->string);
     }
 }

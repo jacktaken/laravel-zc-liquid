@@ -11,11 +11,16 @@
 
 namespace Liquid\Tag;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Liquid\AbstractBlock;
+use Liquid\Constant;
 use Liquid\Context;
 use Liquid\LiquidCompiler;
 use Liquid\LiquidException;
 use Liquid\Regexp;
+use Liquid\Traits\TransformLaravelModel;
 
 /**
  * Loops over an array, assigning the current value to a given variable
@@ -34,6 +39,9 @@ use Liquid\Regexp;
  */
 class TagFor extends AbstractBlock
 {
+
+    use TransformLaravelModel;
+
     /**
      * @var array The collection to loop over
      */
@@ -84,7 +92,7 @@ class TagFor extends AbstractBlock
 
         parent::__construct($markup, $tokens, $compiler);
 
-        $syntaxRegexp = new Regexp('/(\w+)\s+in\s+(' . LiquidCompiler::VARIABLE_NAME . ')/');
+        $syntaxRegexp = new Regexp('/(\w+)\s+in\s+(' . Constant::VariableSignaturePartial . ')/');
 
         if ($syntaxRegexp->match($markup)) {
 
@@ -115,8 +123,9 @@ class TagFor extends AbstractBlock
      * @param string $tag
      * @param array $params
      * @param array $tokens
+     * @param int $line
      */
-    public function unknownTag($tag, $params, array $tokens)
+    public function unknownTag($tag, $params, array $tokens, $line = 0)
     {
         if ($tag == 'else') {
             // Update reference to nodelistHolder for this block
@@ -125,7 +134,7 @@ class TagFor extends AbstractBlock
 
             array_push($this->blocks, array($tag, $params, &$this->nodelist));
         } else {
-            parent::unknownTag($tag, $params, $tokens);
+            parent::unknownTag($tag, $params, $tokens, $line);
         }
     }
 
@@ -148,6 +157,12 @@ class TagFor extends AbstractBlock
             case 'collection':
 
                 $collection = $context->get($this->collectionName);
+                if($collection instanceof Model || $collection instanceof Builder || $collection instanceof Relation) {
+                    $collection = $collection->offset($this->validateOffset($this->attributes['offset'] ?? 0))
+                        ->limit($this->validateNumberItems($this->attributes['limit'] ?? 50))->get()->all();
+
+                    $collection = $this->transformModel($collection);
+                }
 
                 if ($collection instanceof \Traversable) {
                     $collection = iterator_to_array($collection);
