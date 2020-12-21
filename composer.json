@@ -1,5 +1,5 @@
 {
-    "name": "cabbage/laravel-zc-liquid",
+    "name": "jacktaken/laravel-zc-liquid",
     "description": "Liquid template engine for Laravel",
 	"keywords": ["liquid", "template"],
 	"homepage": "https://github.com/jooorooo/laravel-liquid",
