@@ -62,15 +62,16 @@ class Variable
             if($filterParserRegexp->matchAll($quotedFragmentRegexp->matches[2])) {
                 foreach($filterParserRegexp->matches[0] AS $filter) {
                     $filterNameRegexp = new Regexp('/\s*?(\w+)/');
-                    $filterNameRegexp->match($filter);
-                    $filtername = $filterNameRegexp->matches[1];
+                    if($filterNameRegexp->match($filter)) {
+                        $filtername = $filterNameRegexp->matches[1];
 
-                    $filterArgumentRegexp = new Regexp('/(?:' . Constant::FilterArgumentSeparator . '|' . Constant::ArgumentSeparator . ')\s*((?:\w+\s*\:\s*)?' . Constant::QuotedFragmentPartial . ')/mu');
-                    $filterArgumentRegexp->matchAll($filter);
+                        $filterArgumentRegexp = new Regexp('/(?:' . Constant::FilterArgumentSeparator . '|' . Constant::ArgumentSeparator . ')\s*((?:\w+\s*\:\s*)?' . Constant::QuotedFragmentPartial . ')/mu');
+                        $filterArgumentRegexp->matchAll($filter);
 
-                    //$matches = $this->arrayFlatten(!empty($filterArgumentRegexp->matches[1]) ? $filterArgumentRegexp->matches[1] : array());
-                    $matches = $this->arrayFlatten(!empty($filterArgumentRegexp->matches[1]) ? $filterArgumentRegexp->matches[1] : array());
-                    $this->filters[] = array($filtername, $matches);
+                        //$matches = $this->arrayFlatten(!empty($filterArgumentRegexp->matches[1]) ? $filterArgumentRegexp->matches[1] : array());
+                        $matches = $this->arrayFlatten(!empty($filterArgumentRegexp->matches[1]) ? $filterArgumentRegexp->matches[1] : array());
+                        $this->filters[] = array($filtername, $matches);
+                    }
                 }
             }
         }
@@ -139,6 +140,58 @@ class Variable
     }
 
     /**
+     * Set Filter
+     *
+     * @param string $filter
+     * @param array $parameters
+     */
+    public function setFilter($filter, array $parameters = [])
+    {
+        $this->filters[] = [$filter, $parameters];
+    }
+
+    /**
+     * Set Filter
+     *
+     * @param string $filter
+     * @param array $parameters
+     */
+    public function preSetFilter($filter, array $parameters = [])
+    {
+        array_unshift($this->filters, [$filter, $parameters]);
+    }
+
+    /**
+     * Set Filters
+     *
+     * @param array $filters
+     */
+    public function setFilters(array $filters)
+    {
+        foreach($filters AS $filter) {
+            if(!is_array($filter)) {
+                $filter = [$filter, []];
+            }
+            $this->setFilter($filter[0], isset($filter[1]) && is_array($filter[1]) ? $filter[1] : []);
+        }
+    }
+
+    /**
+     * Set Filters
+     *
+     * @param array $filters
+     */
+    public function preSetFilters(array $filters)
+    {
+        foreach($filters AS $filter) {
+            if(!is_array($filter)) {
+                $filter = [$filter, []];
+            }
+            $this->preSetFilter($filter[0], isset($filter[1]) && is_array($filter[1]) ? $filter[1] : []);
+        }
+    }
+
+    /**
      * Renders the variable with the data in the context
      *
      * @param Context $context
@@ -151,12 +204,16 @@ class Variable
         $output = $context->get($this->name);
 
         $filters = $this->filters;
-        if(in_array(trim($this->name), $this->getLayoutVariableNames())) {
-            $filters[0] = [];
+        if(in_array(trim($this->name), $this->getProtectedVariables())) {
+            foreach($filters AS $index => $filter) {
+                if(in_array($filter[0], ['escape', 'escape_once'])) {
+                    unset($filters[$index]);
+                }
+            }
         }
 
         foreach ($filters as $filter) {
-            if(empty($filter)) {
+            if(empty($filter) || !isset($filter[1])) {
                 continue;
             }
 
@@ -173,7 +230,8 @@ class Variable
 
         if (is_float($output)) {
             if ($output == (int)$output) {
-                return number_format($output, 1);
+                return (int)$output;
+//                return number_format($output, 1);
             }
         }
 
@@ -183,13 +241,13 @@ class Variable
     /**
      * @return array
      */
-    protected function getLayoutVariableNames()
+    protected function getProtectedVariables()
     {
-        $names = ['content_for_layout'];
-        if($dinamic = $this->compiler->getLayoutVariableName()) {
-            $names[] = $dinamic;
+        if(($protected_variables = config('liquid.protected_variables', [])) && is_array($protected_variables)) {
+            return $protected_variables;
         }
 
-        return array_unique($names);
+        return ['content_for_header', 'content_for_layout', 'content_for_index', 'content_for_footer'];
     }
+
 }

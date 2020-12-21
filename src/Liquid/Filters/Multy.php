@@ -43,7 +43,7 @@ class Multy
      *
      * @return array|Iterator|string
      */
-    public function slice($input, $offset, $length = null)
+    public function slice($input, $offset = 0, $length = null)
     {
         if ($input instanceof Iterator) {
             $input = iterator_to_array($input);
@@ -61,5 +61,14 @@ class Multy
         return $input;
     }
 
+    /**
+     * @param mixed $input
+     *
+     * @return string
+     */
+    public function json($input)
+    {
+        return json_encode($input);
+    }
 
 }

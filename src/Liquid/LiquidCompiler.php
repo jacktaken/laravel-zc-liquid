@@ -13,14 +13,16 @@
 
 namespace Liquid;
 
+use Closure;
 use ErrorException;
+use Exception;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
-use Illuminate\Filesystem\Filesystem;
-use Illuminate\Support\Facades\View;
 use Illuminate\View\Compilers\Compiler;
 use Illuminate\View\Compilers\CompilerInterface;
 use Illuminate\View\ViewFinderInterface;
+use InvalidArgumentException;
 use Liquid\Traits\TokenizeTrait;
+use ReflectionException;
 
 /**
  * The Template class.
@@ -66,11 +68,6 @@ class LiquidCompiler extends Compiler implements CompilerInterface
     protected $filemtime = [];
 
     /**
-     * @var string
-     */
-    protected static $layout_variable_name;
-
-    /**
      * @var CompilerEngine
      */
     protected $compiler;
@@ -92,33 +89,12 @@ class LiquidCompiler extends Compiler implements CompilerInterface
 
     const PARTIAL_TEMPLATE_PARSER = self::VARIABLE_TAG[0] . '.*?' . self::VARIABLE_TAG[1] . '|' . self::OPERATION_TAGS[0] . '.*?' . self::OPERATION_TAGS[1];
 
-    const TEMPLATE_PARSER = self::PARTIAL_TEMPLATE_PARSER . '|' . self::ANY_STARTING_TAG;
-
     // Variable name.
     const VARIABLE_NAME = '[a-zA-Z_][a-zA-Z_0-9.-]*';
 
     const QUOTED_FRAGMENT = '"[^"]*"|\'[^\']*\'|(?:[^\s,\|\'"]|"[^"]*"|\'[^\']*\')+';
 
-    const QUOTED_FRAGMENT_FILTER_ARGUMENT = '"[^":]*"|\'[^\':]*\'|(?:[^\s:,\|\'"]|"[^":]*"|\'[^\':]*\')+';
-
     const TAG_ATTRIBUTES = '/(\w+)\s*\:\s*(' . self::QUOTED_FRAGMENT . ')/';
-    
-    /**
-     * @return null|string
-     */
-    public function getLayoutVariableName()
-    {
-        return static::$layout_variable_name;
-    }
-
-    /**
-     * @param  string  $name
-     * @return void
-     */
-    public function setLayoutVariableName($name)
-    {
-        static::$layout_variable_name = $name;
-    }
 
     /**
      * Get the path currently being compiled.
@@ -141,35 +117,25 @@ class LiquidCompiler extends Compiler implements CompilerInterface
         $this->path = $path;
     }
 
-    /**
-     * Get the path to the compiled directory.
-     *
-     * @return string
-     */
-    public function getCompiledCachePath()
-    {
-        return $this->cachePath;
-    }
-
-    /**
-     * Set view extension
-     *
-     * @param string $value
-     * @return LiquidCompiler
-     */
-    public function setExtension($value)
-    {
-        app('view')->getFinder()->addExtension($value);
-        $this->getViewFinder()->addExtension($value);
-        return $this;
-    }
+//    /**
+//     * Set view extension
+//     *
+//     * @param string $value
+//     * @return LiquidCompiler
+//     */
+//    public function setExtension($value)
+//    {
+//        app('view')->getFinder()->addExtension($value);
+//        $this->getViewFinder()->addExtension($value);
+//        return $this;
+//    }
 
     /**
      * @return ViewFinderInterface
      */
     public function getViewFinder()
     {
-        return view()->shared('__env')->getFinder();
+        return \view()->getFinder();
     }
 
     /**
@@ -215,8 +181,8 @@ class LiquidCompiler extends Compiler implements CompilerInterface
      */
     public function registerTag($name, $class)
     {
-        if($class instanceof \Closure) {
-            throw new \InvalidArgumentException('Type "Closure" is not allowed for tag!');
+        if($class instanceof Closure) {
+            throw new InvalidArgumentException('Type "Closure" is not allowed for tag!');
         }
         $this->tags[$name] = $class;
         return $this;
@@ -238,8 +204,8 @@ class LiquidCompiler extends Compiler implements CompilerInterface
      */
     public function registerFilter($filter)
     {
-        if($filter instanceof \Closure) {
-            throw new \InvalidArgumentException('Type "Closure" is not allowed for filter!');
+        if($filter instanceof Closure) {
+            throw new InvalidArgumentException('Type "Closure" is not allowed for filter!');
         }
 
         $this->filters[] = $filter;
@@ -266,14 +232,6 @@ class LiquidCompiler extends Compiler implements CompilerInterface
     public function getFileSource($path)
     {
         return $this->files->get($path);
-    }
-
-    /**
-     * @return Filesystem
-     */
-    public function getFilesistem()
-    {
-        return $this->files;
     }
 
     /**
@@ -344,7 +302,7 @@ class LiquidCompiler extends Compiler implements CompilerInterface
      * @throws ErrorException
      * @throws FileNotFoundException
      * @throws LiquidException
-     * @throws \ReflectionException
+     * @throws ReflectionException
      */
     public function render($path, array $assigns = [])
     {
@@ -386,16 +344,30 @@ class LiquidCompiler extends Compiler implements CompilerInterface
             $this->files->lastModified($compiled);
     }
 
+
+    public function getTextLine($text)
+    {
+        $pattern = '/' . preg_quote($text, '/') . '/i';
+        $lineNumber = 0;
+        if ($this->getPath() && preg_match($pattern, $content = $this->getFileSource($this->getPath()), $matches, PREG_OFFSET_CAPTURE)) {
+            //PREG_OFFSET_CAPTURE will add offset of the found string to the array of matches
+            //now get a substring of the offset length and explode it by \n
+            $lineNumber = count(explode(PHP_EOL, substr($content, 0, $matches[0][1])));
+        }
+
+        return $lineNumber;
+    }
+
     /**
      * Handle a view exception.
      *
-     * @param  \Exception $e
+     * @param  Exception $e
      * @param  int $obLevel
      * @return void
      *
      * @throws $e
      */
-    protected function handleViewException(\Exception $e, $obLevel)
+    protected function handleViewException(Exception $e, $obLevel)
     {
         $e = new ErrorException($this->getMessage($e), 0, 1, $e->getFile(), $e->getLine(), $e);
 
@@ -409,10 +381,10 @@ class LiquidCompiler extends Compiler implements CompilerInterface
     /**
      * Get the exception message for an exception.
      *
-     * @param  \Exception $e
+     * @param  Exception $e
      * @return string
      */
-    protected function getMessage(\Exception $e)
+    protected function getMessage(Exception $e)
     {
         return $e->getMessage() . ' (View: ' . realpath(last($this->lastCompiled)) . ')';
     }

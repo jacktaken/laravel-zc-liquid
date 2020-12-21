@@ -20,6 +20,7 @@ use Liquid\Tag\TagPaginate;
 use Liquid\Tag\TagRaw;
 use Liquid\Tag\TagTablerow;
 use Liquid\Tag\TagUnless;
+use Liquid\Tag\TagEcho;
 
 use Liquid\Filters\Str;
 use Liquid\Filters\Escape;
@@ -51,6 +52,42 @@ return [
 
     /*
      |--------------------------------------------------------------------------
+     | Liquid template loader
+     |--------------------------------------------------------------------------
+     |
+     | By default loader is file
+     | Supported types is file, database
+     */
+    'loader' => 'file',
+
+    'loader_stores' => [
+        'database' => [
+            'driver' => 'database',
+            'table' => 'templates',
+            'connection' => null,
+        ],
+    ],
+
+    /*
+     |--------------------------------------------------------------------------
+     | Liquid template loader
+     |--------------------------------------------------------------------------
+     |
+     | By default compiled is file
+     | Supported types is file, database
+     */
+    'compiled' => 'file',
+
+    'compiled_stores' => [
+        'database' => [
+            'driver' => 'database',
+            'table' => 'compiled',
+            'connection' => null,
+        ],
+    ],
+
+    /*
+     |--------------------------------------------------------------------------
      | Liquid allowed tags
      |--------------------------------------------------------------------------
      */
@@ -75,6 +112,7 @@ return [
         'tablerow' => TagTablerow::class,
         'unless' => TagUnless::class,
         'layout' => TagLayout::class,
+        'echo' => TagEcho::class,
     ],
 
     /*
@@ -90,6 +128,26 @@ return [
         Multy::class,
         Math::class,
         Date::class,
+    ],
+
+    /*
+     |--------------------------------------------------------------------------
+     | Transform Laravel Model
+     |--------------------------------------------------------------------------
+     */
+    'transform_model' => [
+    ],
+
+    /*
+     |--------------------------------------------------------------------------
+     | Protected variables for assign
+     |--------------------------------------------------------------------------
+     */
+    'protected_variables' => [
+        'content_for_header',
+        'content_for_layout',
+        'content_for_index',
+        'content_for_footer'
     ],
 
 ];
